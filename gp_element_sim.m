@@ -3,7 +3,7 @@ function [err] = gp_element_sim(E_y)
 addpath('util')
 ShowPlots=true;
 dxf_out=false;
-type = 'len';
+type = 'def';
 %% All units are in um
 % Constants
 c       = (2.99792458e8)*(1e6);%in um/sec 
@@ -78,20 +78,19 @@ Ey=repmat(Ey,[n_FW,1]);
 %% Propagation utilities
 fy=-0.5/dy:1/L_y:0.5/dy-1/L_y;
 % Shifted TF for efficiency
-TF_pos_o=ifftshift(exp(-1i*2*pi*L_HW*n_o_pos*real(sqrt((1/lambda^2-fy.^2)))));
-TF_pos_e=ifftshift(exp(-1i*2*pi*L_HW*n_e_pos*real(sqrt((1/lambda^2-fy.^2)))));
-TF_neg_o=ifftshift(exp(-1i*2*pi*L_HW*n_o_neg*real(sqrt((1/lambda^2-fy.^2)))));
-TF_neg_e=ifftshift(exp(-1i*2*pi*L_HW*n_e_neg*real(sqrt((1/lambda^2-fy.^2)))));
+TF_pos_o=conj(ifftshift(exp(1i*2*pi*L_HW*n_o_pos*sqrt((1/lambda^2-fy.^2)))));
+TF_pos_e=conj(ifftshift(exp(1i*2*pi*L_HW*n_e_pos*sqrt((1/lambda^2-fy.^2)))));
+TF_neg_o=conj(ifftshift(exp(1i*2*pi*L_HW*n_o_neg*sqrt((1/lambda^2-fy.^2)))));
+TF_neg_e=conj(ifftshift(exp(1i*2*pi*L_HW*n_e_neg*sqrt((1/lambda^2-fy.^2)))));
 
-% TF_pos_o=ifftshift(exp(-1i*pi*L_HW*n_o_pos*lambda*fy.^2));
-% TF_pos_e=ifftshift(exp(-1i*pi*L_HW*n_e_pos*lambda*fy.^2));
-% TF_neg_o=ifftshift(exp(-1i*pi*L_HW*n_o_neg*lambda*fy.^2));
-% TF_neg_e=ifftshift(exp(-1i*pi*L_HW*n_e_neg*lambda*fy.^2));
-
-prop_pos_o=@(In) ifft(TF_pos_o.*fft(In));
-prop_pos_e=@(In) ifft(TF_pos_e.*fft(In));
-prop_neg_o=@(In) ifft(TF_neg_o.*fft(In));
-prop_neg_e=@(In) ifft(TF_neg_e.*fft(In));
+prop_pos_o=@(In, err) ifft((TF_pos_o.^err).*fft(In));
+prop_pos_e=@(In, err) ifft((TF_pos_e.^err).*fft(In));
+prop_neg_o=@(In, err) ifft((TF_neg_o.^err).*fft(In));
+prop_neg_e=@(In, err) ifft((TF_neg_e.^err).*fft(In));
+%% Error in duty cycle
+err_arr = randn(n_FW-1, 2) / 3;
+err_arr(abs(err_arr)>1) = 0;
+err_arr = 1+(0.2*err_arr / 10);
 %% Whole domain propagation
 % Define first domain as positive
 % Define x axes as ordinary
@@ -101,24 +100,24 @@ for pidx=1:size(crystal_mask,3)
         poling_mask=crystal_mask(cidx,:,pidx);%mask along x axis
         % Principle domain - first positive domain then negative
         % Positive domain propagation along principle axes
-        Ex_pos_n=prop_pos_o(Ex(cidx,:));
-        Ey_pos_n=prop_pos_e(Ey(cidx,:));
+        Ex_pos_n=prop_pos_o(Ex(cidx,:),err_arr(cidx,1));
+        Ey_pos_n=prop_pos_e(Ey(cidx,:),err_arr(cidx,1));
         % Negative domain
         [Ex_neg,Ey_neg]=rot_2d(Ex_pos_n,Ey_pos_n,theta_neg-theta_pos);% Angle rotates from positive to negative
         % Propagate through negative domain to positive domain
-        Ex_neg_n=prop_neg_o(Ex_neg);
-        Ey_neg_n=prop_neg_e(Ey_neg);    
+        Ex_neg_n=prop_neg_o(Ex_neg,err_arr(cidx,2));
+        Ey_neg_n=prop_neg_e(Ey_neg,err_arr(cidx,2));    
         [Ex(cidx+1,:),Ey(cidx+1,:)]=rot_2d(Ex_neg_n,Ey_neg_n,theta_pos-theta_neg);
         % Conjugated domain - first negative then positive
         [Ex_neg,Ey_neg]=rot_2d(Ex(cidx,:),Ey(cidx,:),theta_neg-theta_pos);
-        Ex_neg_n=prop_neg_o(Ex_neg);
-        Ey_neg_n=prop_neg_e(Ey_neg);
+        Ex_neg_n=prop_neg_o(Ex_neg,err_arr(cidx,1));
+        Ey_neg_n=prop_neg_e(Ey_neg,err_arr(cidx,1));
         [Ex_pos_n,Ey_pos_n]=rot_2d(Ex_neg_n,Ey_neg_n,theta_pos-theta_neg);
-        Ex_pos_nn=prop_pos_o(Ex_pos_n);
-        Ey_pos_nn=prop_pos_e(Ey_pos_n);
+        Ex_pos_nn=prop_pos_o(Ex_pos_n,err_arr(cidx,2));
+        Ey_pos_nn=prop_pos_e(Ey_pos_n,err_arr(cidx,2));
         % Twice positive - gap domain between to gratings according to HCP
-        Ex_t_pos_nn=prop_pos_o(prop_pos_o(Ex(cidx,:)));
-        Ey_t_pos_nn=prop_pos_e(prop_pos_e(Ey(cidx,:)));
+        Ex_t_pos_nn=prop_pos_o(prop_pos_o(Ex(cidx,:),err_arr(cidx,1)),err_arr(cidx,2));
+        Ey_t_pos_nn=prop_pos_e(prop_pos_e(Ey(cidx,:),err_arr(cidx,1)),err_arr(cidx,2));
         % Seperate to different regions
         Ex(cidx+1,poling_mask==1)=Ex_pos_nn(poling_mask==1);
         Ey(cidx+1,poling_mask==1)=Ey_pos_nn(poling_mask==1);        
@@ -171,12 +170,14 @@ EL_op0=EL_o;
 EL_op=repmat(EL_op0,[prop_size,1]);
 % EL_op1=repmat([EL_op0(1:floor(end/2)),zeros(1,length(EL_op0(ceil(end/2):end)))],[prop_size,1]);
 % EL_op2=repmat([zeros(1,length(EL_op0(1:floor(end/2)))),EL_op0(ceil(end/2):end)],[prop_size,1]);
+reflection_decay_mask = abs(linspace(-1,1,size(EL_op,2)));
+reflection_decay_mask = exp(-(reflection_decay_mask/0.96).^50);
 for idx=1:prop_size-1
 %     EL_op(idx,:)=prop_fs(EL_op(1,:),delta_z*idx);
 %     EL_op1(idx,:)=prop_fs(EL_op1(1,:),delta_z*idx);
 %     EL_op2(idx,:)=prop_fs(EL_op2(1,:),delta_z*idx);
 %     EL_op(idx,round(end/2)-50:round(end/2)+50)=0;
-    EL_op(idx+1,:)=prop_fs(EL_op(idx,:),delta_z);
+    EL_op(idx+1,:)=reflection_decay_mask.*prop_fs(EL_op(idx,:),delta_z);
 %     EL_op(idx+1,round(end/2)-30:round(end/2)+30)=0;
 end
 % EL_op=[EL_op1(:,1:floor(end/2)),EL_op2(:,ceil(end/2):end)];
