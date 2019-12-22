@@ -1,9 +1,10 @@
 function [err] = gp_element_sim(E_y)
 %Periodically poled LiNbO3
+rng(1)
 addpath('util')
 ShowPlots=true;
 dxf_out=false;
-type = 'def';
+type = 'len';
 %% All units are in um
 % Constants
 c       = (2.99792458e8)*(1e6);%in um/sec 
@@ -60,6 +61,7 @@ end
 ny=size(crystal_mask,2);
 L_y = ny*dy;
 y=-L_y/2:dy:L_y/2-dy;% Tranversial coordiantes
+x=L_FW*1e-3*(1:n_FW);
 % gap_mask = padarray(crystal_mask,[2,0],1,'pre') - padarray(crystal_mask,[2,0],1,'post');
 % crystal_mask = int8(padarray(crystal_mask,[2,0],1,'pre'));
 % crystal_mask(gap_mask==1) = -1;
@@ -67,14 +69,14 @@ y=-L_y/2:dy:L_y/2-dy;% Tranversial coordiantes
 n_FW=size(crystal_mask,1);
 L_x=n_FW*L_FW;
 if ShowPlots
-    fshow(crystal_mask,y,L_FW*1e-3*(1:n_FW));title('Crystal mask profile');xlabel('y [\mum]');ylabel('x [mm]')
+    fshow(crystal_mask,y,x);title('Crystal mask profile');xlabel('y [\mum]');ylabel('x [mm]')
 end
 %% Input Gaussian
-Ex_0=exp(-(y/L_y).^2)/sqrt(2);
-Ey_0=Ex_0*1i;
-[Ex,Ey]=rot_2d(Ex_0,Ey_0,theta_pos);% Postive domain is default
-Ex=repmat(Ex,[n_FW,1]);
+Ey_0=exp(-(y/L_y).^2)/sqrt(2);
+Ez_0=Ey_0*1i;
+[Ey,Ez]=rot_2d(Ey_0,Ez_0,theta_pos);% Postive domain is default
 Ey=repmat(Ey,[n_FW,1]);
+Ez=repmat(Ez,[n_FW,1]);
 %% Propagation utilities
 fy=-0.5/dy:1/L_y:0.5/dy-1/L_y;
 % Shifted TF for efficiency
@@ -90,7 +92,11 @@ prop_neg_e=@(In, err) ifft((TF_neg_e.^err).*fft(In));
 %% Error in duty cycle
 err_arr = randn(n_FW-1, 2) / 3;
 err_arr(abs(err_arr)>1) = 0;
-err_arr = 1+(0.2*err_arr / 10);
+err_arr = 1+(0.1*err_arr / 10);
+if ShowPlots
+    figure;histogram(err_arr(:))
+    title('Domain length multiplicative factor')
+end
 %% Whole domain propagation
 % Define first domain as positive
 % Define x axes as ordinary
@@ -100,51 +106,54 @@ for pidx=1:size(crystal_mask,3)
         poling_mask=crystal_mask(cidx,:,pidx);%mask along x axis
         % Principle domain - first positive domain then negative
         % Positive domain propagation along principle axes
-        Ex_pos_n=prop_pos_o(Ex(cidx,:),err_arr(cidx,1));
-        Ey_pos_n=prop_pos_e(Ey(cidx,:),err_arr(cidx,1));
+        Ey_pos_n=prop_pos_o(Ey(cidx,:),err_arr(cidx,1));
+        Ez_pos_n=prop_pos_e(Ez(cidx,:),err_arr(cidx,1));
         % Negative domain
-        [Ex_neg,Ey_neg]=rot_2d(Ex_pos_n,Ey_pos_n,theta_neg-theta_pos);% Angle rotates from positive to negative
+        [Ey_neg,Ez_neg]=rot_2d(Ey_pos_n,Ez_pos_n,theta_neg-theta_pos);% Angle rotates from positive to negative
         % Propagate through negative domain to positive domain
-        Ex_neg_n=prop_neg_o(Ex_neg,err_arr(cidx,2));
-        Ey_neg_n=prop_neg_e(Ey_neg,err_arr(cidx,2));    
-        [Ex(cidx+1,:),Ey(cidx+1,:)]=rot_2d(Ex_neg_n,Ey_neg_n,theta_pos-theta_neg);
+        Ey_neg_n=prop_neg_o(Ey_neg,err_arr(cidx,2));
+        Ez_neg_n=prop_neg_e(Ez_neg,err_arr(cidx,2));    
+        [Ey(cidx+1,:),Ez(cidx+1,:)]=rot_2d(Ey_neg_n,Ez_neg_n,theta_pos-theta_neg);
         % Conjugated domain - first negative then positive
-        [Ex_neg,Ey_neg]=rot_2d(Ex(cidx,:),Ey(cidx,:),theta_neg-theta_pos);
-        Ex_neg_n=prop_neg_o(Ex_neg,err_arr(cidx,1));
-        Ey_neg_n=prop_neg_e(Ey_neg,err_arr(cidx,1));
-        [Ex_pos_n,Ey_pos_n]=rot_2d(Ex_neg_n,Ey_neg_n,theta_pos-theta_neg);
-        Ex_pos_nn=prop_pos_o(Ex_pos_n,err_arr(cidx,2));
-        Ey_pos_nn=prop_pos_e(Ey_pos_n,err_arr(cidx,2));
+        [Ey_neg,Ez_neg]=rot_2d(Ey(cidx,:),Ez(cidx,:),theta_neg-theta_pos);
+        Ey_neg_n=prop_neg_o(Ey_neg,err_arr(cidx,1));
+        Ez_neg_n=prop_neg_e(Ez_neg,err_arr(cidx,1));
+        [Ey_pos_n,Ez_pos_n]=rot_2d(Ey_neg_n,Ez_neg_n,theta_pos-theta_neg);
+        Ey_pos_nn=prop_pos_o(Ey_pos_n,err_arr(cidx,2));
+        Ez_pos_nn=prop_pos_e(Ez_pos_n,err_arr(cidx,2));
         % Twice positive - gap domain between to gratings according to HCP
-        Ex_t_pos_nn=prop_pos_o(prop_pos_o(Ex(cidx,:),err_arr(cidx,1)),err_arr(cidx,2));
-        Ey_t_pos_nn=prop_pos_e(prop_pos_e(Ey(cidx,:),err_arr(cidx,1)),err_arr(cidx,2));
+        Ey_t_pos_nn=prop_pos_o(prop_pos_o(Ey(cidx,:),err_arr(cidx,1)),err_arr(cidx,2));
+        Ez_t_pos_nn=prop_pos_e(prop_pos_e(Ez(cidx,:),err_arr(cidx,1)),err_arr(cidx,2));
         % Seperate to different regions
-        Ex(cidx+1,poling_mask==1)=Ex_pos_nn(poling_mask==1);
-        Ey(cidx+1,poling_mask==1)=Ey_pos_nn(poling_mask==1);        
-        Ex(cidx+1,poling_mask==-1)=Ex_t_pos_nn(poling_mask==-1);
+        Ey(cidx+1,poling_mask==1)=Ey_pos_nn(poling_mask==1);
+        Ez(cidx+1,poling_mask==1)=Ez_pos_nn(poling_mask==1);        
         Ey(cidx+1,poling_mask==-1)=Ey_t_pos_nn(poling_mask==-1);
+        Ez(cidx+1,poling_mask==-1)=Ez_t_pos_nn(poling_mask==-1);
         %EL=(Ex(cidx+1,:)-1i*Ey(cidx+1,:))/sqrt(2);
     end
-    [Ex,Ey]=rot_2d(Ex,Ey,-theta_pos);
+    [Ey,Ez]=rot_2d(Ey,Ez,-theta_pos);
     %% Post process - find phase profile
     % TODO - check if another step is necessary to shift from crystal to air
-    EL=(Ex-1i*Ey)/sqrt(2);
+    EL=(Ey-1i*Ez)/sqrt(2);
     if ShowPlots
-        ashow(abs(EL).^2,y,L_FW*1e-3*(1:n_FW));title('LCP propagation inside crystal');xlabel('y [\mum]');ylabel('x [mm]')
+        ashow(abs(EL).^2,y,x);title('LCP propagation inside crystal');xlabel('y [\mum]');ylabel('x [mm]')
+        LCP_inten_along = sum(abs(EL).^2,2);
+        figure;plot(x(1:size(LCP_inten_along,1)),LCP_inten_along);title('LCP intensity along crystal');xlabel('x [mm]');ylabel('Intensity')
+        ylim([0,1.1*max(LCP_inten_along(:))]);
         figure;plot(y,abs(EL(end,:).^2));title('LCP intensity at crystal output');xlabel('y [\mum]');ylabel('Intensity')
     end
     angle_EL=unwrap(angle(EL(end,:)));
 %% Change of medium 
-[ Ex_o,o_yaxis_new ] = medium_change(Ex(end,:),n_o,fy,false);
-[ Ey_o,e_yaxis_new ] = medium_change(Ey(end,:),n_e,fy,true);
+[ Ey_o,o_yaxis_new ] = medium_change(Ey(end,:),n_o,fy,false);
+[ Ez_o,e_yaxis_new ] = medium_change(Ez(end,:),n_e,fy,true);
 if length(o_yaxis_new)<length(e_yaxis_new)
-    Ey_o=interp1(e_yaxis_new,Ey_o,o_yaxis_new);
+    Ez_o=interp1(e_yaxis_new,Ez_o,o_yaxis_new);
     y_new=o_yaxis_new;
 else
-    Ex_o=interp1(o_yaxis_new,Ex_o,e_yaxis_new);
+    Ey_o=interp1(o_yaxis_new,Ey_o,e_yaxis_new);
     y_new=e_yaxis_new;
 end
-EL_o=(Ex_o-1i*Ey_o)/sqrt(2);
+EL_o=(Ey_o-1i*Ez_o)/sqrt(2);
 angle_EL_o=unwrap(angle(EL_o));
 if ShowPlots
     figure;plot(y_new,abs(EL_o).^2);title('LCP intensity outside crystal');xlabel('y [\mum]');ylabel('Intensity')
