@@ -4,7 +4,7 @@ rng(1)
 addpath('util')
 ShowPlots=true;
 dxf_out=false;
-type = 'len';
+type = 'def';
 %% All units are in um
 % Constants
 c       = (2.99792458e8)*(1e6);%in um/sec 
@@ -77,6 +77,37 @@ Ez_0=Ey_0*1i;
 [Ey,Ez]=rot_2d(Ey_0,Ez_0,theta_pos);% Postive domain is default
 Ey=repmat(Ey,[n_FW,1]);
 Ez=repmat(Ez,[n_FW,1]);
+%% Jones matrix method
+PP1=zeros([2,1].*size(crystal_mask));
+PP2=PP1;
+PP1(1:2:end)=(crystal_mask==0);
+PP2(2:2:end)=(crystal_mask==1);
+PP = double(or(PP1,PP2));
+base_mat_pos = [exp(1i*2*pi*n_o_pos/lambda*L_HW),  0;
+                0,                                 exp(1i*2*pi*n_e_pos/lambda*L_HW)];
+base_mat_neg = [exp(1i*2*pi*n_o_neg/lambda*L_HW),  0;
+                0,                                 exp(1i*2*pi*n_e_neg/lambda*L_HW)];
+rot_mat_pos = [cosd(theta_pos), sind(theta_pos);
+           -sind(theta_pos),cosd(theta_pos)];
+rot_mat_neg = [cosd(theta_neg), sind(theta_neg);
+           -sind(theta_neg),cosd(theta_neg)];       
+j_mat_pos = rot_mat_pos'*base_mat_pos*rot_mat_pos;
+j_mat_neg = rot_mat_neg'*base_mat_neg*rot_mat_neg;
+E_curr = [Ey_0;Ez_0];
+for cidx=1:size(PP,1)
+    poling_mask=PP(cidx,:,1);%mask along x axis
+    E_next_pos = j_mat_pos*E_curr;
+    E_next_neg = j_mat_neg*E_curr;
+    E_next = E_next_neg;
+    E_next(:,poling_mask == 1) = E_next_pos(:,poling_mask == 1);
+    E_curr = E_next;
+end
+EL_j=(E_curr(1,:)-1i*E_curr(2,:))/sqrt(2);
+angle_EL_j=unwrap(angle(EL_j));
+figure;plot(y,angle_EL_j)
+xlabel('y [\mum]');
+ylabel('Radians');
+title('Jones matrix method, LCP phase at crystal output');
 %% Propagation utilities
 fy=-0.5/dy:1/L_y:0.5/dy-1/L_y;
 % Shifted TF for efficiency
