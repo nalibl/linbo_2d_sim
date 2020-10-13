@@ -77,6 +77,17 @@ Ez_0=Ey_0*1i;
 [Ey,Ez]=rot_2d(Ey_0,Ez_0,theta_pos);% Postive domain is default
 Ey=repmat(Ey,[n_FW,1]);
 Ez=repmat(Ez,[n_FW,1]);
+%% Error in duty cycle
+err_arr = randn(n_FW-1, 2) / 3;
+err_arr(abs(err_arr)>1) = 0;
+err_arr = 1+(0.1*err_arr / 10);
+if ShowPlots
+    figure;histogram(err_arr(:))
+    title('Domain length multiplicative factor')
+end
+err_arr_jones = err_arr';
+err_arr_jones = err_arr_jones(:);
+err_arr_jones = [ 0; 0; err_arr_jones];
 %% Jones matrix method
 PP1=zeros([2,1].*size(crystal_mask));
 PP2=PP1;
@@ -91,11 +102,11 @@ rot_mat_pos = [cosd(theta_pos), sind(theta_pos);
            -sind(theta_pos),cosd(theta_pos)];
 rot_mat_neg = [cosd(theta_neg), sind(theta_neg);
            -sind(theta_neg),cosd(theta_neg)];       
-j_mat_pos = rot_mat_pos'*base_mat_pos*rot_mat_pos;
-j_mat_neg = rot_mat_neg'*base_mat_neg*rot_mat_neg;
 E_curr = [Ey_0;Ez_0];
 for cidx=1:size(PP,1)
-    poling_mask=PP(cidx,:,1);%mask along x axis
+    poling_mask=PP(cidx,:,1);%mask along x axis    
+    j_mat_pos = rot_mat_pos'*(base_mat_pos.^(err_arr_jones(cidx)))*rot_mat_pos;
+    j_mat_neg = rot_mat_neg'*(base_mat_neg.^(err_arr_jones(cidx)))*rot_mat_neg;
     E_next_pos = j_mat_pos*E_curr;
     E_next_neg = j_mat_neg*E_curr;
     E_next = E_next_neg;
@@ -108,6 +119,10 @@ figure;plot(y,angle_EL_j)
 xlabel('y [\mum]');
 ylabel('Radians');
 title('Jones matrix method, LCP phase at crystal output');
+figure;plot(y,abs(EL_j).^2)
+xlabel('y [\mum]');
+ylabel('Intensity');
+title('Jones matrix method, LCP intensity at crystal output');
 %% Propagation utilities
 fy=-0.5/dy:1/L_y:0.5/dy-1/L_y;
 % Shifted TF for efficiency
@@ -120,14 +135,6 @@ prop_pos_o=@(In, err) ifft((TF_pos_o.^err).*fft(In));
 prop_pos_e=@(In, err) ifft((TF_pos_e.^err).*fft(In));
 prop_neg_o=@(In, err) ifft((TF_neg_o.^err).*fft(In));
 prop_neg_e=@(In, err) ifft((TF_neg_e.^err).*fft(In));
-%% Error in duty cycle
-err_arr = randn(n_FW-1, 2) / 3;
-err_arr(abs(err_arr)>1) = 0;
-err_arr = 1+(0.1*err_arr / 10);
-if ShowPlots
-    figure;histogram(err_arr(:))
-    title('Domain length multiplicative factor')
-end
 %% Whole domain propagation
 % Define first domain as positive
 % Define x axes as ordinary
