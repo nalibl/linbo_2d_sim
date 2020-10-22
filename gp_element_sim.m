@@ -80,7 +80,7 @@ Ez=repmat(Ez,[n_FW,1]);
 %% Error in duty cycle
 err_arr = randn(n_FW-1, 2) / 3;
 err_arr(abs(err_arr)>1) = 0;
-err_arr = 1+(0.1*err_arr / 10);
+err_arr = 1+(0.01 * err_arr);
 if ShowPlots
     figure;histogram(err_arr(:))
     title('Domain length multiplicative factor')
@@ -103,6 +103,7 @@ rot_mat_pos = [cosd(theta_pos), sind(theta_pos);
 rot_mat_neg = [cosd(theta_neg), sind(theta_neg);
            -sind(theta_neg),cosd(theta_neg)];       
 E_curr = [Ey_0;Ez_0];
+E_jon_tot = zeros([2 size(PP)]);
 for cidx=1:size(PP,1)
     poling_mask=PP(cidx,:,1);%mask along x axis    
     j_mat_pos = rot_mat_pos'*(base_mat_pos.^(err_arr_jones(cidx)))*rot_mat_pos;
@@ -112,8 +113,10 @@ for cidx=1:size(PP,1)
     E_next = E_next_neg;
     E_next(:,poling_mask == 1) = E_next_pos(:,poling_mask == 1);
     E_curr = E_next;
+    E_jon_tot(:, cidx, :) = E_curr;
 end
 EL_j=(E_curr(1,:)-1i*E_curr(2,:))/sqrt(2);
+EL_jon_tot = (E_jon_tot(1,:,:)-1i*E_jon_tot(2,:,:))/sqrt(2);
 angle_EL_j=unwrap(angle(EL_j));
 figure;plot(y,angle_EL_j)
 xlabel('y [\mum]');
@@ -123,6 +126,10 @@ figure;plot(y,abs(EL_j).^2)
 xlabel('y [\mum]');
 ylabel('Intensity');
 title('Jones matrix method, LCP intensity at crystal output');
+figure;imagesc(1:1714,y,abs(squeeze(EL_jon_tot)).^2);
+xlabel('y [\mum]');
+ylabel('x [\mum]');
+title('Jones matrix method, LCP intensity along crystal');
 %% Propagation utilities
 fy=-0.5/dy:1/L_y:0.5/dy-1/L_y;
 % Shifted TF for efficiency

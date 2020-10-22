@@ -9,8 +9,12 @@ for idx=1:N
 end
 figure;
 plot(E_vec,n_vec(2,:)-n_vec(2,1));
+title('n2(E)-n2(0)');
+xlabel('E');
 figure;
 plot(E_vec,n_vec(3,:)-n_vec(3,1));
+title('n3(E)-n3(0)');
+xlabel('E');
 delta_phi_regular = 2*pi/lambda * (n_vec(2,end)-n_vec(2,1));
 [ ~,theta ] = refraction_field( [0;E_vec(end);0] , lambda );
 beta = 2*pi*(n_vec(3,1)-n_vec(2,1))/lambda; % Birefringence coefficient for positive domain
