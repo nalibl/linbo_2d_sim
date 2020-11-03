@@ -72,7 +72,7 @@ if ShowPlots
     fshow(crystal_mask,y,x);title('Crystal mask profile');xlabel('y [\mum]');ylabel('x [mm]')
 end
 %% Input Gaussian
-Ey_0=exp(-(y/L_y).^2)/sqrt(2);
+Ey_0=exp(-(y/(0.25*L_y)).^2)/sqrt(2);
 Ez_0=Ey_0*1i;
 [Ey,Ez]=rot_2d(Ey_0,Ez_0,theta_pos);% Postive domain is default
 Ey=repmat(Ey,[n_FW,1]);
@@ -80,7 +80,7 @@ Ez=repmat(Ez,[n_FW,1]);
 %% Error in duty cycle
 err_arr = randn(n_FW-1, 2) / 3;
 err_arr(abs(err_arr)>1) = 0;
-err_arr = 1+(0.01 * err_arr);
+err_arr = 1+(0.01 * 0 * err_arr);
 if ShowPlots
     figure;histogram(err_arr(:))
     title('Domain length multiplicative factor')
@@ -88,6 +88,18 @@ end
 err_arr_jones = err_arr';
 err_arr_jones = err_arr_jones(:);
 err_arr_jones = [ 0; 0; err_arr_jones];
+%% Propagation utilities
+fy=-0.5/dy:1/L_y:0.5/dy-1/L_y;
+% Shifted TF for efficiency
+TF_pos_o=conj(ifftshift(exp(1i*2*pi*L_HW*n_o_pos*sqrt((1/lambda^2-fy.^2)))));
+TF_pos_e=conj(ifftshift(exp(1i*2*pi*L_HW*n_e_pos*sqrt((1/lambda^2-fy.^2)))));
+TF_neg_o=conj(ifftshift(exp(1i*2*pi*L_HW*n_o_neg*sqrt((1/lambda^2-fy.^2)))));
+TF_neg_e=conj(ifftshift(exp(1i*2*pi*L_HW*n_e_neg*sqrt((1/lambda^2-fy.^2)))));
+
+prop_pos_o=@(In, err) ifft((TF_pos_o.^err).*fft(In));
+prop_pos_e=@(In, err) ifft((TF_pos_e.^err).*fft(In));
+prop_neg_o=@(In, err) ifft((TF_neg_o.^err).*fft(In));
+prop_neg_e=@(In, err) ifft((TF_neg_e.^err).*fft(In));
 %% Jones matrix method
 PP1=zeros([2,1].*size(crystal_mask));
 PP2=PP1;
@@ -130,18 +142,38 @@ figure;imagesc(1:1714,y,abs(squeeze(EL_jon_tot)).^2);
 xlabel('y [\mum]');
 ylabel('x [\mum]');
 title('Jones matrix method, LCP intensity along crystal');
-%% Propagation utilities
-fy=-0.5/dy:1/L_y:0.5/dy-1/L_y;
-% Shifted TF for efficiency
-TF_pos_o=conj(ifftshift(exp(1i*2*pi*L_HW*n_o_pos*sqrt((1/lambda^2-fy.^2)))));
-TF_pos_e=conj(ifftshift(exp(1i*2*pi*L_HW*n_e_pos*sqrt((1/lambda^2-fy.^2)))));
-TF_neg_o=conj(ifftshift(exp(1i*2*pi*L_HW*n_o_neg*sqrt((1/lambda^2-fy.^2)))));
-TF_neg_e=conj(ifftshift(exp(1i*2*pi*L_HW*n_e_neg*sqrt((1/lambda^2-fy.^2)))));
+%% Propagate to focal plane
+Ex_j_o=padarray(E_curr(1,:),[0,length(E_curr(1,:))]);
+Ey_j_o=padarray(E_curr(2,:),[0,length(E_curr(2,:))]);
+dy_new=y(2)-y(1);
+L_new=length(Ex_j_o)*dy_new;
+y_new = -0.5*L_new:dy_new:0.5*L_new-dy_new;
+fy_fs=-0.5/dy_new:1/L_new:0.5/dy_new-1/L_new;
+TF_fs=ifftshift(exp(-1i*2*pi*real(sqrt((1/lambda^2-fy_fs.^2)))));
+prop_fs=@(In,z) ifft((TF_fs.^z).*fft(In));
+%% Propagate Jones method
+delta_z=300;% In microns
+prop_size=600; % Cycles to run outside crystal
+Ex_j_o_op0=Ex_j_o;
+Ex_j_o_op=repmat(Ex_j_o_op0,[prop_size,1]);
+Ey_j_o_op0=Ey_j_o;
+Ey_j_o_op=repmat(Ey_j_o_op0,[prop_size,1]);
+reflection_decay_mask = abs(linspace(-1,1,size(Ex_j_o_op,2)));
+reflection_decay_mask = exp(-(reflection_decay_mask/0.96).^50);
+for idx=1:prop_size-1
+    Ex_j_o_op(idx+1,:)=reflection_decay_mask.*prop_fs(Ex_j_o_op(idx,:),delta_z);
+    Ey_j_o_op(idx+1,:)=reflection_decay_mask.*prop_fs(Ey_j_o_op(idx,:),delta_z);
+end
+if ShowPlots
+    ashow(abs((Ex_j_o_op-1i*Ey_j_o_op)/sqrt(2)).^2,y_new,delta_z*1e-3*(1:prop_size));
+    title('LCP propagation outside crystal');xlabel('y [\mum]');ylabel('x [mm]');
+    ashow(abs(Ex_j_o_op).^2+abs(Ey_j_o_op).^2,y_new,delta_z*1e-3*(1:prop_size));
+    title('Intensity outside crystal');xlabel('y [\mum]');ylabel('x [mm]');
+%     figure;plot(abs(EL_op(200,round(5373*0.2):round(5373*0.8))).^2);
+end
+%     figure;plot(y,unwrap(angle(Ex(end,:))),y,unwrap(angle(Ey(end,:))));
+%     ashow(abs(Ex).^2);
 
-prop_pos_o=@(In, err) ifft((TF_pos_o.^err).*fft(In));
-prop_pos_e=@(In, err) ifft((TF_pos_e.^err).*fft(In));
-prop_neg_o=@(In, err) ifft((TF_neg_o.^err).*fft(In));
-prop_neg_e=@(In, err) ifft((TF_neg_e.^err).*fft(In));
 %% Whole domain propagation
 % Define first domain as positive
 % Define x axes as ordinary
@@ -236,7 +268,8 @@ for idx=1:prop_size-1
 end
 % EL_op=[EL_op1(:,1:floor(end/2)),EL_op2(:,ceil(end/2):end)];
 if ShowPlots
-    ashow(abs(EL_op).^2,y_new,prop_size*1e-3*(1:prop_size));title('LCP propagation outside crystal');xlabel('y [\mum]');ylabel('x [mm]')
+    ashow(abs(EL_op).^2,y_new,delta_z*1e-3*(1:prop_size));title('LCP propagation outside crystal');
+    xlabel('y [\mum]');ylabel('x [mm]')
 %     figure;plot(abs(EL_op(200,round(5373*0.2):round(5373*0.8))).^2);
 end
 %     figure;plot(y,unwrap(angle(Ex(end,:))),y,unwrap(angle(Ey(end,:))));
