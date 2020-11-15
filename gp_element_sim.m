@@ -15,7 +15,7 @@ L_x=12e3; % Re-calculated later, small difference
 L_y=1e3;
 L_z=0.5e3;
 % Simulation grid
-dy=0.5;
+dy=0.2;
 dy_thresh=50;%in microns
 dy_thresh_pix=dy_thresh/dy;% in pixels
 y=-L_y/2:dy:L_y/2-dy;% Tranversial coordiantes
@@ -55,9 +55,14 @@ gap_mask = circshift(crystal_mask, [0,gap_dy]) - circshift(crystal_mask, [0,-gap
 crystal_mask(gap_mask~=0) = -1;
 % Fix wrong area in deflector
 if isequal(type,'def')
-    crystal_mask(:,1960:end) = 0; 
+    if dy == 0.5
+        crystal_mask(:,1960:end) = 0; 
+    elseif dy == 0.2
+        crystal_mask(:,5051:end) = 0; 
+    else
+        crystal_mask(:,10100:end) = 0; 
+    end
 end
-
 ny=size(crystal_mask,2);
 L_y = ny*dy;
 y=-L_y/2:dy:L_y/2-dy;% Tranversial coordiantes
@@ -91,10 +96,10 @@ err_arr_jones = [ 0; 0; err_arr_jones];
 %% Propagation utilities
 fy=-0.5/dy:1/L_y:0.5/dy-1/L_y;
 % Shifted TF for efficiency
-TF_pos_o=conj(ifftshift(exp(1i*2*pi*L_HW*n_o_pos*sqrt((1/lambda^2-fy.^2)))));
-TF_pos_e=conj(ifftshift(exp(1i*2*pi*L_HW*n_e_pos*sqrt((1/lambda^2-fy.^2)))));
-TF_neg_o=conj(ifftshift(exp(1i*2*pi*L_HW*n_o_neg*sqrt((1/lambda^2-fy.^2)))));
-TF_neg_e=conj(ifftshift(exp(1i*2*pi*L_HW*n_e_neg*sqrt((1/lambda^2-fy.^2)))));
+TF_pos_o=conj(ifftshift(exp(1i*2*pi*L_HW*sqrt((n_o_pos/lambda)^2-fy.^2))));
+TF_pos_e=conj(ifftshift(exp(1i*2*pi*L_HW*sqrt((n_e_pos/lambda)^2-fy.^2))));
+TF_neg_o=conj(ifftshift(exp(1i*2*pi*L_HW*sqrt((n_o_neg/lambda)^2-fy.^2))));
+TF_neg_e=conj(ifftshift(exp(1i*2*pi*L_HW*sqrt((n_e_neg/lambda)^2-fy.^2))));
 
 prop_pos_o=@(In, err) ifft((TF_pos_o.^err).*fft(In));
 prop_pos_e=@(In, err) ifft((TF_pos_e.^err).*fft(In));
@@ -142,14 +147,17 @@ figure;imagesc(1:1714,y,abs(squeeze(EL_jon_tot)).^2);
 xlabel('y [\mum]');
 ylabel('x [\mum]');
 title('Jones matrix method, LCP intensity along crystal');
+%% Change of medium 
+Ey_j_o = medium_change(E_curr(1,:),n_o,fy,lambda,false);
+Ez_j_o = medium_change(E_curr(2,:),n_e,fy,lambda,true);
 %% Propagate to focal plane
-Ex_j_o=padarray(E_curr(1,:),[0,length(E_curr(1,:))]);
-Ey_j_o=padarray(E_curr(2,:),[0,length(E_curr(2,:))]);
+Ex_j_o=padarray(Ey_j_o,[0,length(E_curr(1,:))]);
+Ey_j_o=padarray(Ez_j_o,[0,length(E_curr(2,:))]);
 dy_new=y(2)-y(1);
 L_new=length(Ex_j_o)*dy_new;
 y_new = -0.5*L_new:dy_new:0.5*L_new-dy_new;
 fy_fs=-0.5/dy_new:1/L_new:0.5/dy_new-1/L_new;
-TF_fs=ifftshift(exp(-1i*2*pi*real(sqrt((1/lambda^2-fy_fs.^2)))));
+TF_fs=ifftshift(exp(-1i*2*pi*real(sqrt(1/(lambda^2)-fy_fs.^2))));
 prop_fs=@(In,z) ifft((TF_fs.^z).*fft(In));
 %% Propagate Jones method
 delta_z=300;% In microns
@@ -169,11 +177,7 @@ if ShowPlots
     title('LCP propagation outside crystal');xlabel('y [\mum]');ylabel('x [mm]');
     ashow(abs(Ex_j_o_op).^2+abs(Ey_j_o_op).^2,y_new,delta_z*1e-3*(1:prop_size));
     title('Intensity outside crystal');xlabel('y [\mum]');ylabel('x [mm]');
-%     figure;plot(abs(EL_op(200,round(5373*0.2):round(5373*0.8))).^2);
 end
-%     figure;plot(y,unwrap(angle(Ex(end,:))),y,unwrap(angle(Ey(end,:))));
-%     ashow(abs(Ex).^2);
-
 %% Whole domain propagation
 % Define first domain as positive
 % Define x axes as ordinary
@@ -223,8 +227,8 @@ if ShowPlots
     figure;plot(y,angle_EL);title('LCP angle at inside crystal, output');xlabel('y [\mum]');ylabel('Intensity')
 end
 %% Change of medium 
-Ey_o = medium_change(Ey(end,:),n_o,fy,false);
-Ez_o = medium_change(Ez(end,:),n_e,fy,true);
+Ey_o = medium_change(Ey(end,:),n_o,fy,lambda,false);
+Ez_o = medium_change(Ez(end,:),n_e,fy,lambda,true);
 EL_o=(Ey_o-1i*Ez_o)/sqrt(2);
 angle_EL_o=unwrap(angle(EL_o));
 if ShowPlots
