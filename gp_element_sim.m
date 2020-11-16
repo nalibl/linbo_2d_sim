@@ -4,7 +4,7 @@ rng(1)
 addpath('util')
 ShowPlots=true;
 dxf_out=false;
-type = 'def';
+type = 'len';
 %% All units are in um
 % Constants
 c       = (2.99792458e8)*(1e6);%in um/sec 
@@ -85,7 +85,7 @@ Ez=repmat(Ez,[n_FW,1]);
 %% Error in duty cycle
 err_arr = randn(n_FW-1, 2) / 3;
 err_arr(abs(err_arr)>1) = 0;
-err_arr = 1+(0.01 * 0 * err_arr);
+err_arr = 1+(0.01 * err_arr);
 if ShowPlots
     figure;histogram(err_arr(:))
     title('Domain length multiplicative factor')
@@ -174,9 +174,9 @@ for idx=1:prop_size-1
 end
 if ShowPlots
     ashow(abs((Ex_j_o_op-1i*Ey_j_o_op)/sqrt(2)).^2,y_new,delta_z*1e-3*(1:prop_size));
-    title('LCP propagation outside crystal');xlabel('y [\mum]');ylabel('x [mm]');
+    title('Jones matrix method, LCP propagation outside crystal');xlabel('y [\mum]');ylabel('x [mm]');
     ashow(abs(Ex_j_o_op).^2+abs(Ey_j_o_op).^2,y_new,delta_z*1e-3*(1:prop_size));
-    title('Intensity outside crystal');xlabel('y [\mum]');ylabel('x [mm]');
+    title('Jones matrix method, Intensity outside crystal');xlabel('y [\mum]');ylabel('x [mm]');
 end
 %% Whole domain propagation
 % Define first domain as positive
@@ -238,6 +238,7 @@ end
 %% Propagate to focal plane
 EL_o=padarray(EL_o,[0,length(EL_o)]);
 L_new=length(EL_o)*dy;
+y_new = -0.5*L_new:dy_new:0.5*L_new-dy_new;
 fy_fs=-0.5/dy:1/L_new:0.5/dy-1/L_new;
 TF_fs=ifftshift(exp(-1i*2*pi*real(sqrt((1/lambda^2-fy_fs.^2)))));
 % TF_fs=ifftshift(exp(1i*pi*lambda*fy_fs.^2));
@@ -255,7 +256,7 @@ for idx=1:prop_size-1
     EL_op(idx+1,:)=reflection_decay_mask.*prop_fs(EL_op(idx,:),delta_z);
 end
 if ShowPlots
-    ashow(abs(EL_op).^2,y,delta_z*1e-3*(1:prop_size));title('LCP propagation outside crystal');
+    ashow(abs(EL_op).^2,y_new,delta_z*1e-3*(1:prop_size));title('LCP propagation outside crystal');
     xlabel('y [\mum]');ylabel('x [mm]')
 end
 %% Output DXF file
